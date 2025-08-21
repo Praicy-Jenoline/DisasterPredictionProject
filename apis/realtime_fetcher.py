@@ -1,121 +1,110 @@
+# apis/realtime_fetcher.py
 import requests
-import pandas as pd
-import numpy as np
-import geocoder
+import datetime
+from core.predict_model import predict_disaster
 
 # ---------------------------
-# API Keys
+# API KEYS (set yours here)
 # ---------------------------
-OPENWEATHER_API_KEY = "uApb4FYB4vxEiYC0AiEV1A2onC9lXHUU"
-
-# ---------------------------
-# Geolocation
-# ---------------------------
-def get_current_location():
-    try:
-        g = geocoder.ip("me")
-        if g.ok:
-            return g.latlng
-    except Exception as e:
-        print(f"[❌] Geolocation error: {e}")
-    return [13.0878, 80.2785]  # fallback to Chennai
-
+TOMORROW_API_KEY = "YOUR_TOMORROW_IO_API_KEY"
+USGS_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
 
 # ---------------------------
-# Fetch Earthquake Data
+# Fetch Tomorrow.io Weather Data
 # ---------------------------
-def fetch_earthquake_data():
-    try:
-        url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
-        res = requests.get(url, timeout=10)
-        data = res.json()
-
-        if "features" in data and len(data["features"]) > 0:
-            eq = data["features"][0]  # latest quake
-            coords = eq["geometry"]["coordinates"]
-            props = eq["properties"]
-
-            return {
-                "magnitude": round(props.get("mag", 0) or 0, 2),
-                "depth": round(coords[2], 2) if len(coords) > 2 else 0,
-                "lat": round(coords[1], 6),
-                "lon": round(coords[0], 6),
-            }
-    except Exception as e:
-        print(f"[❌] Earthquake fetch error: {e}")
-
-    return {"magnitude": 0, "depth": 0, "lat": 0, "lon": 0}
-
-
-# ---------------------------
-# Fetch Weather Data
-# ---------------------------
-def fetch_weather_data(lat, lon):
-    try:
-        url = (
-            f"https://api.openweathermap.org/data/2.5/onecall?"
-            f"lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric"
-        )
-        res = requests.get(url, timeout=10)
-        data = res.json()
-
-        current = data.get("current", {})
-        return {
-            "temp": round(current.get("temp", 0), 2),
-            "humidity": current.get("humidity", 0),
-            "pressure": current.get("pressure", 0),
-            "wind_speed": current.get("wind_speed", 0),
-            "weather_id": current.get("weather", [{}])[0].get("id", 0),
-        }
-    except Exception as e:
-        print(f"[❌] Weather fetch error: {e}")
-        return {"temp": 0, "humidity": 0, "pressure": 0, "wind_speed": 0, "weather_id": 0}
-
-
-# ---------------------------
-# Feature Engineering
-# ---------------------------
-def get_features_for_prediction():
-    lat, lon = get_current_location()
-    eq_data = fetch_earthquake_data()
-    weather_data = fetch_weather_data(lat, lon)
-
-    features_dict = {
-        "atmospheric_disaster_typ": weather_data["weather_id"],
-        "urbanization": 1,
-        "proximity_t_wetlandloss": 1.49,
-        "magnitude": eq_data["magnitude"],
-        "depth": eq_data["depth"],
-        "temp": weather_data["temp"],
-        "humidity": weather_data["humidity"],
-        "pressure": weather_data["pressure"],
-        "wind_speed": weather_data["wind_speed"],
-        "lat": lat,
-        "lon": lon,
-        "climatechange": 1,
-        "deforestation": 1,
-        "landslides": 0.85,
-        # add dummy placeholders for rest of your 21 features
-        "feature_13": 0,
-        "feature_14": 0,
-        "feature_15": 0,
-        "feature_16": 0,
-        "feature_17": 0,
-        "feature_18": 0,
-        "feature_19": 0,
-        "feature_20": 0,
-        "feature_21": 0,
+def fetch_weather(lat=20.0, lon=77.0):
+    url = f"https://api.tomorrow.io/v4/timelines"
+    params = {
+        "location": f"{lat},{lon}",
+        "fields": ["temperature", "humidity", "pressureSeaLevel", "windSpeed", "precipitationIntensity"],
+        "timesteps": "current",
+        "apikey": TOMORROW_API_KEY,
     }
 
-    features_df = pd.DataFrame([features_dict])
+    resp = requests.get(url, params=params)
+    resp.raise_for_status()
+    data = resp.json()
 
-    # 🔹 Flatten nested lists/arrays (convert [801] → 801)
-    for col in features_df.columns:
-        features_df[col] = features_df[col].apply(
-            lambda x: x[0] if isinstance(x, (list, tuple, np.ndarray)) and len(x) > 0 else x
-        )
+    values = data["data"]["timelines"][0]["intervals"][0]["values"]
 
-    # 🔹 Force numeric (convert strings → numbers, fill NaN with 0)
-    features_df = features_df.apply(pd.to_numeric, errors="coerce").fillna(0)
+    return {
+        "atmospheric_pressure": values.get("pressureSeaLevel", 1013),
+        "humidity": values.get("humidity", 60),
+        "rainfall_mm": values.get("precipitationIntensity", 0) * 60,  # per hour
+        "wind_shear": values.get("windSpeed", 5),
+        "sea_surface_temperature": values.get("temperature", 26),
+    }
 
-    return features_df
+# ---------------------------
+# Fetch USGS Earthquake Data
+# ---------------------------
+def fetch_earthquake():
+    resp = requests.get(USGS_URL)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not data["features"]:
+        return {"magnitude": 0, "depth": 0, "latitude": 0, "longitude": 0}
+
+    latest_eq = data["features"][0]
+    coords = latest_eq["geometry"]["coordinates"]
+
+    return {
+        "magnitude": latest_eq["properties"]["mag"] or 0,
+        "depth": coords[2] if len(coords) > 2 else 0,
+        "longitude": coords[0],
+        "latitude": coords[1],
+    }
+
+# ---------------------------
+# Merge into ML Input Format
+# ---------------------------
+def build_feature_dict(weather, earthquake):
+    features = {
+        # Weather-based
+        "atmospheric_pressure": weather.get("atmospheric_pressure", 1013),
+        "humidity": weather.get("humidity", 60),
+        "rainfall_mm": weather.get("rainfall_mm", 0),
+        "wind_shear": weather.get("wind_shear", 5),
+        "sea_surface_temperature": weather.get("sea_surface_temperature", 26),
+
+        # Earthquake-based
+        "magnitude": earthquake.get("magnitude", 0),
+        "depth": earthquake.get("depth", 0),
+        "latitude": earthquake.get("latitude", 0),
+        "longitude": earthquake.get("longitude", 0),
+
+        # Safe defaults for dataset-required fields
+        "soil_saturation": 0.5,
+        "urbanization": 5,
+        "drainagesystems": 3,
+        "deterioratinginfrastructure": 0,
+        "deforestation": 0,
+        "vegetation_cover": 5,
+        "slope_angle": 15,
+        "ocean_depth": 4000,
+        "vorticity": -1,
+        "coastalvulnerability": 0,
+    }
+
+    return features
+
+# ---------------------------
+# Main Function
+# ---------------------------
+def fetch_and_predict():
+    print("📡 Fetching weather data from Tomorrow.io...")
+    weather = fetch_weather()
+
+    print("🌎 Fetching earthquake data from USGS...")
+    earthquake = fetch_earthquake()
+
+    print("\n🔄 Building feature vector...")
+    features = build_feature_dict(weather, earthquake)
+
+    print("\n📊 Running ML prediction...")
+    results = predict_disaster(features)
+
+    print("\n🌍 Realtime Disaster Risk Results:")
+    for hazard, risk in results.items():
+        print(f"- {hazard}: {'⚠️ RISK' if risk == 1 else '✅ Safe'}")

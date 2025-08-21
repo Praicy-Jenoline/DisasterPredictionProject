@@ -2,66 +2,87 @@
 # coding: utf-8
 
 # In[ ]:
-
-
-# core/train_model.py
-
+# train model
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.impute import SimpleImputer
-from xgboost import XGBClassifier
-from imblearn.over_sampling import SMOTE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import classification_report
 import joblib
 import os
 
-# === Paths ===
-data_path = "data/processed/combined_disaster_data.csv"
-model_path = "models/xgb_disaster_model.joblib"
-encoder_path = "models/label_encoder.joblib"
-
-# === Load Dataset ===
-data = pd.read_csv(data_path)
-
-# === DEBUG: View columns and NaNs ===
-print("[DEBUG] Loaded dataset with shape:", data.shape)
-print("[DEBUG] Number of NaNs per column:\n", data.isnull().sum())
-
-# === Drop rows without target ===
-data.dropna(subset=["disaster_type"], inplace=True)
-
-# === Encode target label ===
-label_encoder = LabelEncoder()
-data["label"] = label_encoder.fit_transform(data["disaster_type"])
-
-# === Save encoder ===
-joblib.dump(label_encoder, encoder_path)
-
-# === Feature / Target Split ===
-X = data.drop(["disaster_type", "label"], axis=1)
-y = data["label"]
-
-# === Impute Missing Values ===
-imputer = SimpleImputer(strategy="mean")
-X_imputed = imputer.fit_transform(X)
-
-# === Balance Dataset using SMOTE ===
-smote = SMOTE(random_state=42)
-X_balanced, y_balanced = smote.fit_resample(X_imputed, y)
-
-# === Train XGBoost Model ===
-model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=42)
-model.fit(X_balanced, y_balanced)
-
-# === Save the Model ===
+# Ensure models directory exists
 os.makedirs("models", exist_ok=True)
-joblib.dump(model, model_path)
 
-# === Evaluate ===
-X_train, X_test, y_train, y_test = train_test_split(X_balanced, y_balanced, test_size=0.2, random_state=42)
-y_pred = model.predict(X_test)
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred))
+# Load dataset
+df = pd.read_csv("data/processed_dataset.csv")
 
+# Drop empty index column if present
+if df.columns[0] == "Unnamed: 0" or df[df.columns[0]].isnull().all():
+    df = df.drop(df.columns[0], axis=1)
+
+# ---------------------------
+# Define target labels
+# ---------------------------
+
+# Flood (binary from disaster_type)
+df["Flood"] = df["disaster_type"].apply(lambda x: 1 if str(x).strip().lower() == "flood" else 0)
+
+# Earthquake (1 if magnitude ≥ 5)
+df["Earthquake"] = df["magnitude"].apply(lambda x: 1 if x >= 5 else 0)
+
+# Landslide (use whichever column has higher value)
+if "landslide" in df.columns and "landslides" in df.columns:
+    df["Landslide"] = df[["landslide", "landslides"]].max(axis=1)
+elif "landslide" in df.columns:
+    df["Landslide"] = df["landslide"]
+elif "landslides" in df.columns:
+    df["Landslide"] = df["landslides"]
+else:
+    raise ValueError("No landslide column found in dataset.")
+
+# Cyclone (heuristic: warm SST + low shear)
+df["Cyclone"] = df.apply(
+    lambda row: 1 if (row["sea_surface_temperature"] > 26 and row["wind_shear"] < 20) else 0,
+    axis=1
+)
+
+# ---------------------------
+# Features and targets
+# ---------------------------
+Y = df[["Flood", "Earthquake", "Landslide", "Cyclone"]]
+
+X = df.drop(
+    ["disaster_type", "Flood", "Earthquake", "Landslide", "Cyclone"],
+    axis=1,
+    errors="ignore"
+)
+
+# ---------------------------
+# Train-test split
+# ---------------------------
+X_train, X_test, Y_train, Y_test = train_test_split(
+    X, Y, test_size=0.2, random_state=42
+)
+
+# ---------------------------
+# Train model
+# ---------------------------
+model = MultiOutputClassifier(RandomForestClassifier(n_estimators=200, random_state=42))
+model.fit(X_train, Y_train)
+
+# ---------------------------
+# Evaluate
+# ---------------------------
+Y_pred = model.predict(X_test)
+print("\nClassification Report (per disaster):\n")
+print(classification_report(Y_test, Y_pred, target_names=Y.columns))
+
+# ---------------------------
+# Save model + metadata
+# ---------------------------
+joblib.dump(model, "models/multi_disaster_model.pkl")
+joblib.dump(X.columns.tolist(), "models/feature_names.pkl")
+joblib.dump(Y.columns.tolist(), "models/label_names.pkl")
+
+print("\n✅ Model training complete. Saved to 'models/' directory.")
