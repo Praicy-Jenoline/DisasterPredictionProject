@@ -3,86 +3,140 @@
 
 # In[ ]:
 # train model
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.metrics import classification_report
-import joblib
+#!/usr/bin/env python
+# coding: utf-8
+
+# -----------------------------
+# Train Model for Disaster Prediction
+# -----------------------------
+#!/usr/bin/env python
+# coding: utf-8
+
+# train model
 import os
+import pandas as pd
+import numpy as np
+import joblib
 
-# Ensure models directory exists
-os.makedirs("models", exist_ok=True)
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.linear_model import LogisticRegression
 
-# Load dataset
-df = pd.read_csv("data/processed_dataset.csv")
+from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
 
-# Drop empty index column if present
-if df.columns[0] == "Unnamed: 0" or df[df.columns[0]].isnull().all():
-    df = df.drop(df.columns[0], axis=1)
+# -----------------------------
+# Path Setup
+# -----------------------------
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # root of repo
+DATA_PATH = os.path.join(ROOT_DIR, "data", "processed", "combined_disaster_data.csv")
+MODEL_PATH = os.path.join(ROOT_DIR, "models", "disaster_model.pkl")
 
-# ---------------------------
-# Define target labels
-# ---------------------------
+os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 
-# Flood (binary from disaster_type)
-df["Flood"] = df["disaster_type"].apply(lambda x: 1 if str(x).strip().lower() == "flood" else 0)
+# -----------------------------
+# Load Data
+# -----------------------------
+print(f"Loading dataset from: {DATA_PATH}")
+df = pd.read_csv(DATA_PATH)
 
-# Earthquake (1 if magnitude ≥ 5)
-df["Earthquake"] = df["magnitude"].apply(lambda x: 1 if x >= 5 else 0)
+# Drop completely empty columns (if any exist)
+df = df.dropna(axis=1, how="all")
 
-# Landslide (use whichever column has higher value)
-if "landslide" in df.columns and "landslides" in df.columns:
-    df["Landslide"] = df[["landslide", "landslides"]].max(axis=1)
-elif "landslide" in df.columns:
-    df["Landslide"] = df["landslide"]
-elif "landslides" in df.columns:
-    df["Landslide"] = df["landslides"]
-else:
-    raise ValueError("No landslide column found in dataset.")
+# -----------------------------
+# Define Features and Targets
+# -----------------------------
+# Label columns (multi-label setup)
+LABEL_COLS = ["disaster_type_encoded", "is_earthquake", "is_flood", "is_landslide", "is_cyclone"]
+LABEL_COLS = [col for col in LABEL_COLS if col in df.columns]
 
-# Cyclone (heuristic: warm SST + low shear)
-df["Cyclone"] = df.apply(
-    lambda row: 1 if (row["sea_surface_temperature"] > 26 and row["wind_shear"] < 20) else 0,
-    axis=1
-)
+if not LABEL_COLS:
+    raise ValueError("No label columns found in dataset!")
 
-# ---------------------------
-# Features and targets
-# ---------------------------
-Y = df[["Flood", "Earthquake", "Landslide", "Cyclone"]]
+X = df.drop(columns=LABEL_COLS, errors="ignore")
+Y = df[LABEL_COLS].astype(int)   # Convert labels to integers (0/1)
 
-X = df.drop(
-    ["disaster_type", "Flood", "Earthquake", "Landslide", "Cyclone"],
-    axis=1,
-    errors="ignore"
-)
+# --- FIX: drop non-numeric features (e.g., date, text) ---
+X = X.select_dtypes(include=[np.number]).copy()
 
-# ---------------------------
-# Train-test split
-# ---------------------------
+# Handle NaN in features (basic imputation)
+X = X.fillna(0)
+
+print(f"Features: {X.shape[1]}, Labels: {len(LABEL_COLS)}")
+print(f"Label columns: {LABEL_COLS}")
+
+# -----------------------------
+# Train-Test Split
+# -----------------------------
 X_train, X_test, Y_train, Y_test = train_test_split(
     X, Y, test_size=0.2, random_state=42
 )
 
-# ---------------------------
-# Train model
-# ---------------------------
-model = MultiOutputClassifier(RandomForestClassifier(n_estimators=200, random_state=42))
-model.fit(X_train, Y_train)
+# -----------------------------
+# Define Models
+# -----------------------------
+models = {
+    "RandomForest": RandomForestClassifier(n_estimators=200, random_state=42),
+    "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
+    "LightGBM": LGBMClassifier(random_state=42),
+    "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42),
+}
 
-# ---------------------------
-# Evaluate
-# ---------------------------
-Y_pred = model.predict(X_test)
-print("\nClassification Report (per disaster):\n")
-print(classification_report(Y_test, Y_pred, target_names=Y.columns))
+# -----------------------------
+# Train & Evaluate
+# -----------------------------
+best_model = None
+best_score = -1
 
-# ---------------------------
-# Save model + metadata
-# ---------------------------
-joblib.dump(model, "models/multi_disaster_model.pkl")
-joblib.dump(X.columns.tolist(), "models/feature_names.pkl")
-joblib.dump(Y.columns.tolist(), "models/label_names.pkl")
+for name, model in models.items():
+    print(f"\nTraining {name}...")
+    try:
+        scores = cross_val_score(model, X_train, Y_train, cv=3, scoring="accuracy")
+        mean_score = np.mean(scores)
+        print(f"{name} CV Accuracy: {mean_score:.4f}")
+    except Exception as e:
+        print(f"⚠️ Skipping CV for {name} due to error:\n{e}")
 
-print("\n✅ Model training complete. Saved to 'models/' directory.")
+    # Fit model on full training set
+    try:
+        model.fit(X_train, Y_train)
+        preds = model.predict(X_test)
+        acc = accuracy_score(Y_test, preds)
+        print(f"{name} Test Accuracy: {acc:.4f}")
+        print(classification_report(Y_test, preds))
+        if acc > best_score:
+            best_score = acc
+            best_model = model
+    except Exception as e:
+        print(f"⚠️ Skipping training for {name} due to error:\n{e}")
+
+# -----------------------------
+# Voting Classifier (Ensemble)
+# -----------------------------
+print("\nTraining Voting Classifier...")
+try:
+    voting_clf = VotingClassifier(
+        estimators=[(name, mdl) for name, mdl in models.items()],
+        voting="soft"
+    )
+    voting_clf.fit(X_train, Y_train)
+    preds = voting_clf.predict(X_test)
+    acc = accuracy_score(Y_test, preds)
+    print(f"VotingClassifier Test Accuracy: {acc:.4f}")
+    print(classification_report(Y_test, preds))
+    if acc > best_score:
+        best_model = voting_clf
+        best_score = acc
+except Exception as e:
+    print(f"⚠️ Skipping VotingClassifier due to error:\n{e}")
+
+# -----------------------------
+# Save Best Model
+# -----------------------------
+if best_model is not None:
+    print(f"\nBest model selected with accuracy: {best_score:.4f}")
+    joblib.dump(best_model, MODEL_PATH)
+    print(f"Model saved to {MODEL_PATH}")
+else:
+    print("❌ No model was successfully trained!")
