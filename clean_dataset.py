@@ -1,73 +1,81 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import os
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split
 
-# -------------------------------
-# Config
-# -------------------------------
-SAVE_PATH = r"C:\Users\Lenovo\DisasterPredictionProject\data\processed\combined_disaster_data.csv"
-os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
+# Paths
+input_path = "data/processed/combined_disaster_data.csv"
+output_path = "data/processed/combined_disaster_data_balanced.csv"
 
-# -------------------------------
-# Generate 30 days of dates
-# -------------------------------
-dates = [datetime.today().date() - timedelta(days=i) for i in range(30)]
-dates.reverse()  # oldest first
+# Load dataset
+df = pd.read_csv(input_path)
 
-# -------------------------------
-# Generate synthetic + earthquake-like data
-# -------------------------------
-np.random.seed(42)
+# Step 1: Convert one-hot encoded labels into single column
+label_columns = ['is_earthquake', 'is_flood', 'is_landslide', 'is_cyclone']
 
-data = pd.DataFrame({
-    "date": dates,
-    "earthquake_event_count": np.random.poisson(2, 30),   # # of quakes/day
-    "mean_earthquake_magnitude": np.random.uniform(3.0, 6.5, 30),  # Richter scale
-    "rainfall": np.random.uniform(0, 200, 30),            # mm
-    "soil_moisture": np.random.uniform(10, 90, 30),       # %
-    "windspeed": np.random.uniform(5, 200, 30),           # km/h
-    "pressure": np.random.uniform(950, 1025, 30),         # hPa
-    "river_level": np.random.uniform(0, 10, 30),          # m
-    "slope_angle": np.random.uniform(0, 45, 30)           # degrees
-})
-
-# Seismic activity proxy
-data["seismic_activity_index"] = np.clip(
-    (data["earthquake_event_count"] / 10) * (data["mean_earthquake_magnitude"] / 5),
-    0, 1
-)
-data["peak_accel_proxy"] = np.clip(data["mean_earthquake_magnitude"] / 3, 0, 2)
-
-# -------------------------------
-# Labels (rules)
-# -------------------------------
-data["is_earthquake"] = ((data["seismic_activity_index"] > 0.2) | (data["mean_earthquake_magnitude"] >= 5)).astype(int)
-data["is_flood"] = ((data["rainfall"] >= 150) | (data["river_level"] > 5)).astype(int)
-data["is_landslide"] = ((data["slope_angle"] >= 20) & (data["rainfall"] > 100) & (data["soil_moisture"] > 65)).astype(int)
-data["is_cyclone"] = ((data["windspeed"] >= 120) & (data["pressure"] < 990)).astype(int)
-
-# Disaster type with priority
-def assign_disaster(row):
-    if row["is_earthquake"]:
+def get_disaster_type(row):
+    if row['is_earthquake'] == 1:
         return "earthquake"
-    elif row["is_cyclone"]:
-        return "cyclone"
-    elif row["is_flood"]:
+    elif row['is_flood'] == 1:
         return "flood"
-    elif row["is_landslide"]:
+    elif row['is_landslide'] == 1:
         return "landslide"
+    elif row['is_cyclone'] == 1:
+        return "cyclone"
     else:
         return "none"
 
-data["disaster_type"] = data.apply(assign_disaster, axis=1)
+df['disaster_type'] = df.apply(get_disaster_type, axis=1)
+df = df.drop(columns=label_columns)
 
-# -------------------------------
-# Save CSV
-# -------------------------------
-data.to_csv(SAVE_PATH, index=False)
-print(f"✅ Dataset saved to {SAVE_PATH}")
-print(data.head())
+print("Initial distribution:\n", df['disaster_type'].value_counts())
+
+# Step 2: Seed underrepresented classes to a safe minimum
+def seed_class(df, label, min_samples=6):
+    current = df[df['disaster_type'] == label]
+    if current.shape[0] < min_samples:
+        template = current.iloc[0] if current.shape[0] > 0 else df.iloc[0]
+        needed = min_samples - current.shape[0]
+        new_rows = pd.DataFrame([template] * needed)
+        new_rows['disaster_type'] = label
+        df = pd.concat([df, new_rows], ignore_index=True)
+    return df
+
+# Make sure each class has at least 6 rows
+for label in ["cyclone", "landslide", "none"]:
+    df = seed_class(df, label, min_samples=6)
+
+print("After seeding:\n", df['disaster_type'].value_counts())
+
+# Step 3: Features/labels
+X = df.drop(columns=["disaster_type"])
+y = df["disaster_type"]
+
+# Keep only numeric features (drop dates/strings)
+X_numeric = X.select_dtypes(include=["int64", "float64"])
+
+# Step 4: Choose safe k_neighbors based on smallest class size
+min_class_size = y.value_counts().min()
+k_neighbors = min(3, max(1, min_class_size - 1))
+
+print(f"Using SMOTE with k_neighbors={k_neighbors}")
+
+# Step 5: Apply SMOTE BEFORE train/test split
+smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
+X_res, y_res = smote.fit_resample(X_numeric, y)
+
+print("Balanced distribution:\n", pd.Series(y_res).value_counts())
+
+# Step 6: Train/test split on balanced data
+X_train, X_test, y_train, y_test = train_test_split(
+    X_res, y_res, test_size=0.2, stratify=y_res, random_state=42
+)
+
+# Step 7: Save balanced dataset
+balanced_df = pd.concat([pd.DataFrame(X_res), pd.DataFrame(y_res)], axis=1)
+balanced_df.rename(columns={balanced_df.columns[-1]: "disaster_type"}, inplace=True)
+balanced_df.to_csv(output_path, index=False)
+
+print(f"\n✅ Balanced dataset saved to {output_path}")
+
+
+
