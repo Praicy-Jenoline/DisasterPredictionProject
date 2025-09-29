@@ -9,79 +9,43 @@
 """
 Simulate predefined disaster scenarios using the trained ML model.
 """
-import sys
+import pandas as pd
 from core.predict_model import predict_disaster
+import joblib
+import os
 
-# ---------------------------
-# Predefined simulation scenarios
-# ---------------------------
-SIMULATIONS = {
-    "Flood": {
-        "atmospheric_pressure": 995,
-        "humidity": 90,
-        "rainfall_mm": 200,
-        "soil_saturation": 0.95,
-        "urbanization": 7,
-        "drainagesystems": 2,
-        "latitude": 23,
-        "longitude": 90,
-    },
-    "Earthquake": {
-        "magnitude": 6.5,
-        "depth": 15,
-        "soil_type_sand": 1,
-        "deterioratinginfrastructure": 1,
-        "urbanization": 5,
-        "latitude": 35,
-        "longitude": 78,
-    },
-    "Landslide": {
-        "slope_angle": 35,
-        "rainfall_mm": 150,
-        "soil_saturation": 0.8,
-        "deforestation": 1,
-        "landslide": 1,
-        "vegetation_cover": 2,
-        "urbanization": 6,
-    },
-    "Cyclone": {
-        "sea_surface_temperature": 29,
-        "wind_shear": 12,
-        "vorticity": -3,
-        "humidity": 85,
-        "ocean_depth": 4000,
-        "coastalvulnerability": 1,
-        "latitude": 18,
-        "longitude": 88,
-    },
-}
+def simulate():
+    model_path = os.path.join("models", "trained_model.pkl")
+    model = joblib.load(model_path)
 
-# ---------------------------
-# Simulation runner
-# ---------------------------
-def run_simulation():
-    print("\n🌍 Disaster Simulation Mode")
-    print("Choose a disaster to simulate:")
-    for i, disaster in enumerate(SIMULATIONS.keys(), 1):
-        print(f"{i}. {disaster}")
+    simulated_cases = [
+        {"temperature": 26, "humidity": 90, "pressure": 995, "wind_speed": 3, "rainfall": 50, "magnitude": 0, "depth": 0},  # Flood
+        {"temperature": 28, "humidity": 60, "pressure": 1005, "wind_speed": 2, "rainfall": 0, "magnitude": 6.2, "depth": 10}, # Earthquake
+        {"temperature": 22, "humidity": 85, "pressure": 1000, "wind_speed": 5, "rainfall": 80, "magnitude": 0, "depth": 0},  # Landslide
+        {"temperature": 29, "humidity": 88, "pressure": 980, "wind_speed": 120, "rainfall": 100, "magnitude": 0, "depth": 0} # Cyclone
+    ]
+
+    print("\nSelect disaster to simulate:")
+    print("1 = Flood\n2 = Earthquake\n3 = Landslide\n4 = Cyclone")
+    choice = input("Enter your choice: ")
 
     try:
-        choice = int(input("\nEnter choice (1-4): ").strip())
-        disaster = list(SIMULATIONS.keys())[choice - 1]
-    except (ValueError, IndexError):
-        print("❌ Invalid choice. Exiting simulation.")
-        sys.exit(1)
+        case = simulated_cases[int(choice)-1]
+    except:
+        print("Invalid choice, defaulting to Flood case.")
+        case = simulated_cases[0]
 
-    print(f"\n🔬 Running simulation for: {disaster}...\n")
+    df = pd.DataFrame([case])
 
-    # Run prediction with predefined features
-    results = predict_disaster(SIMULATIONS[disaster])
+    print("\n📊 Simulated Input Data:\n")
+    for col in df.columns:
+        print(f"{col}: {df[col].values[0]}")
 
-    # Print results
-    print("📊 Prediction Results:")
-    for hazard, risk in results.items():
-        print(f"- {hazard}: {'⚠️ RISK' if risk == 1 else '✅ Safe'}")
+    result = predict_disaster(model, df)
 
+    print("\n🔮 Prediction Result:\n")
+    for key, value in result.items():
+        print(f"{key}: {value}")
 
 if __name__ == "__main__":
-    run_simulation()
+    simulate()

@@ -1,79 +1,60 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-# core/predict_model.py
-
-"""
-Prediction module. Loads trained ML model and predicts on features.
-"""
 import joblib
-import numpy as np
-import pandas as pd
 import os
-
-# Load model and metadata
-MODEL_PATH = "models/multi_disaster_model.pkl"
-FEATURES_PATH = "models/feature_names.pkl"
-LABELS_PATH = "models/label_names.pkl"
-
-if not (os.path.exists(MODEL_PATH) and os.path.exists(FEATURES_PATH) and os.path.exists(LABELS_PATH)):
-    raise FileNotFoundError("❌ Trained model or metadata not found. Run train_model.py first.")
-
-model = joblib.load(MODEL_PATH)
-feature_names = joblib.load(FEATURES_PATH)
-label_names = joblib.load(LABELS_PATH)
-
-
-def predict_disaster(input_data: dict):
+# Path to my model file
+model_path = os.path.join("models", "LightGBM_model.pkl")
+# Load the LightGBM model safely
+try:
+    model = joblib.load(model_path)
+except Exception as e:
+    print(f"⚠ Warning: Model load failed, using mock predictions. {e}")
+    model = None  # fallback to mock
+def predict_disaster(data):
     """
-    Predicts multiple disasters from given input data.
-
-    Parameters:
-        input_data (dict): Dictionary of feature_name -> value
-
-    Returns:
-        dict: Predicted labels with 0/1 risk classification
+    Predict disaster type using the trained LightGBM model.
+    `data` is expected to be a Pandas DataFrame with correct features.
+    Returns (disaster, probabilities)
     """
-
-    # Ensure all required features exist, fill missing with 0
-    features = []
-    for col in feature_names:
-        val = input_data.get(col, 0)  # default = 0 if not provided
-        features.append(val)
-
-    # Convert to dataframe (model expects 2D input)
-    X = pd.DataFrame([features], columns=feature_names)
-
-    # Predict
-    y_pred = model.predict(X)[0]
-
-    # Map predictions to labels
-    results = {label: int(pred) for label, pred in zip(label_names, y_pred)}
-
-    return results
-
-
-# ---------------------------
-# Example usage (manual test)
-# ---------------------------
-if __name__ == "__main__":
-    # Example dummy input (replace with realtime_fetcher / simulate)
-    sample_input = {
-        "atmospheric_pressure": 1000,
-        "humidity": 80,
-        "rainfall_mm": 120,
-        "magnitude": 6.2,
-        "depth": 30,
-        "sea_surface_temperature": 28,
-        "wind_shear": 15,
-        "vorticity": -2,
-        "soil_saturation": 0.9,
-        "urbanization": 6,
-    }
-
-    results = predict_disaster(sample_input)
-    print("\n🌍 Disaster Risk Prediction:")
-    for hazard, risk in results.items():
-        print(f"- {hazard}: {'⚠️ RISK' if risk == 1 else '✅ Safe'}")
+    try:
+        # -----------------------------
+        # SAFE CLAUSE: If values are normal → "None"
+        # -----------------------------
+        row = data.iloc[0].to_dict()
+        if (
+            row.get("rainfall", 0) < 20.0
+            and row.get("windspeed", 0) < 15.0
+            and 995 < row.get("pressure", 1010) < 1025
+            and row.get("seismic_activity", 0) < 1.0
+            and row.get("peak_acceleration", 0) < 0.1
+            and row.get("river_level", 0) <= 2.0
+            and row.get("soil_moisture", 25) < 50.0
+        ):
+            return "None", None
+        # -----------------------------
+        # Use ML model if loaded
+        # -----------------------------
+        if model is not None:
+            prediction = model.predict(data)[0]
+            probabilities = None
+            if hasattr(model, "predict_proba"):
+                probabilities = model.predict_proba(data)[0]
+            label_map = {
+                0: "Flood",
+                1: "Earthquake",
+                2: "Landslide",
+                3: "Cyclone",
+                4: "None"
+            }
+            disaster = label_map.get(int(prediction), "Unknown")
+            return disaster, probabilities
+        if row.get("rainfall", 0) > 100:
+            return "Flood", None
+        elif row.get("earthquake_mean_earth", 0) > 4.0:
+            return "Earthquake", None
+        elif row.get("slope_angle", 0) > 30:
+            return "Landslide", None
+        elif row.get("windspeed", 0) > 100:
+            return "Cyclone", None
+        else:
+            return "None", None
+    except Exception as e:
+        return f"error: {e}", None

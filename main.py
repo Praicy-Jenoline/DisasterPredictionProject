@@ -1,37 +1,37 @@
 # main.py
-import sys
-from apis.realtime_fetcher import fetch_and_predict
-from simulate import run_simulation
-
+from apis.realtime_fetcher import get_realtime_data, fetch_simulated_data
+from core.predict_model import predict_disaster
+from notifications.notifier import send_alert
+import os
 def main():
-    print("\n🌍 Disaster Prediction System")
-    print("Choose an option:")
-    print("1. Check Realtime Disaster Risk (APIs)")
-    print("2. Run a Disaster Simulation")
+    print("\n🌍 Disaster Prediction Demo (Chennai Default)\n")
+    print("Choose mode:")
+    print("1 = API (Tomorrow.io + USGS)")
+    print("2 = Simulation")
+    choice = input("Enter your choice: ")
 
-    try:
-        choice = int(input("\nEnter choice (1-2): ").strip())
-    except ValueError:
-        print("❌ Invalid input. Exiting.")
-        sys.exit(1)
+    if choice == "1":
+        api_key = input("Enter Tomorrow.io API Key: ")
+        data = get_realtime_data(api_key)
+    else:
+        data = fetch_simulated_data()
 
-    try:
-        if choice == 1:
-            print("\n📡 Fetching realtime data and predicting risk...\n")
-            fetch_and_predict()
-        elif choice == 2:
-            run_simulation()
-        else:
-            print("❌ Invalid choice. Exiting.")
-            sys.exit(1)
-    except Exception as e:
-        print(f"\n🚨 Error occurred: {e}")
-        stop = input("Do you want to stop the program? (y/n): ").strip().lower()
-        if stop == "y":
-            print("🛑 Program stopped by user.")
-            sys.exit(1)
-        else:
-            print("⚠️ Continuing execution...")
+    print("\n📊 Input Data:\n")
+    for k, v in data.iloc[0].items():
+        print(f"{k}: {v}")
+
+    prediction, probabilities = predict_disaster(data)
+
+    print("\n🔮 Prediction Result:\n")
+    print(f"Predicted Disaster: {prediction}")
+    if probabilities is not None:
+        print(f"Probability: {probabilities}")
+
+    # ✅ Fix: wrap prediction in dict for notifier
+    if prediction.lower() != "none":
+        print("\n🚨 ALERT! 🚨")
+        send_alert({"Predicted Disaster": prediction})
+
 
 if __name__ == "__main__":
     main()

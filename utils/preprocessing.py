@@ -5,11 +5,9 @@
 
 
 # utils/preprocessing.py
-from sklearn.preprocessing import StandardScaler
+import pandas as pd
 
-def scale_features(dataframe):
-    """Scales the dataset features using Standard Scaler."""
-    scaler = StandardScaler()
-    scaled = scaler.fit_transform(dataframe)
-    return scaled
-
+def clean_features(df: pd.DataFrame):
+    """Preprocess incoming features (normalize, handle missing)"""
+    df = df.fillna(0)
+    return df
