@@ -25,7 +25,7 @@
     <option value="2">Simulation Mode</option>
   </select>
 
-  <div id="apiSection" style="display:block;">
+  <div id="apiSection">
     <label>Tomorrow.io API Key:</label>
     <input type="text" id="apiKey" placeholder="Enter your API key" />
   </div>
@@ -34,6 +34,114 @@
     <h3>Select Disaster to Simulate</h3>
     <select id="disasterType">
       <option value="Flood">Flood</option>
+      <option value="Earthquake">Earthquake</option>
+      <option value="Landslide">Landslide</option>
+      <option value="Cyclone">Cyclone</option>
+      <option value="None">No Disaster</option>
+    </select>
+  </div>
+
+  <button id="runBtn">Run Prediction</button>
+
+  <div id="result"></div>
+</div>
+
+<script>
+// Constants
+const LAT = 13.0827; // Chennai latitude
+const LON = 80.2707; // Chennai longitude
+
+// Mode toggling
+const modeSelect = document.getElementById("mode");
+const simSection = document.getElementById("simSection");
+const apiSection = document.getElementById("apiSection");
+const resultBox = document.getElementById("result");
+
+modeSelect.addEventListener("change", () => {
+  simSection.style.display = modeSelect.value === "2" ? "block" : "none";
+  apiSection.style.display = modeSelect.value === "1" ? "block" : "none";
+});
+
+// Main prediction logic
+document.getElementById("runBtn").addEventListener("click", async () => {
+  resultBox.innerHTML = "⏳ Running prediction...";
+  const mode = modeSelect.value;
+  const apiKey = document.getElementById("apiKey").value.trim();
+  let data = {};
+
+  if (mode === "1") {
+    if (!apiKey) {
+      resultBox.innerHTML = "⚠ Please enter your API key for real-time mode.";
+      return;
+    }
+
+    try {
+      // Fetch weather from Tomorrow.io
+      const weatherRes = await fetch(`https://api.tomorrow.io/v4/weather/realtime?location=${LAT},${LON}&apikey=${apiKey}`);
+      const weatherJson = await weatherRes.json();
+      const values = weatherJson.data?.values || {};
+      data.temperature = values.temperature ?? 30.0;
+      data.rainfall = values.precipitationIntensity ?? 0.0;
+      data.windspeed = values.windSpeed ?? 5.0;
+      data.pressure = values.pressureSurfaceLevel ?? 1013.0;
+
+      // Fetch earthquake from USGS
+      const quakeRes = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson");
+      const quakeJson = await quakeRes.json();
+      const mag = quakeJson.features?.[0]?.properties?.mag ?? 0.0;
+      data.earthquake_mean_earth = mag;
+
+      // Other safe defaults
+      data.soil_moisture = 25.0;
+      data.river_level = 1.0;
+      data.slope_angle = 5.0;
+      data.seismic_activity = 0.0;
+      data.peak_acceleration = 0.0;
+
+    } catch (err) {
+      resultBox.innerHTML = "❌ API error, showing safe defaults.";
+      data = {
+        temperature:30, rainfall:0, windspeed:5, pressure:1013, earthquake_mean_earth:0,
+        soil_moisture:25, river_level:1, slope_angle:5, seismic_activity:0, peak_acceleration:0
+      };
+    }
+
+  } else {
+    // Simulation mode
+    const selectedDisaster = document.getElementById("disasterType").value;
+    const scenarios = {
+      "Flood": {temperature:27.5, rainfall:120, windspeed:10, pressure:995, river_level:5, slope_angle:10, earthquake_mean_earth:0, soil_moisture:80, seismic_activity:0, peak_acceleration:0},
+      "Earthquake": {temperature:30, rainfall:0, windspeed:5, pressure:1008, river_level:1, slope_angle:5, earthquake_mean_earth:5.2, soil_moisture:25, seismic_activity:6.5, peak_acceleration:0.3},
+      "Landslide": {temperature:26, rainfall:80, windspeed:6, pressure:1002, river_level:2, slope_angle:35, earthquake_mean_earth:0, soil_moisture:70, seismic_activity:0.5, peak_acceleration:0.05},
+      "Cyclone": {temperature:27, rainfall:200, windspeed:120, pressure:970, river_level:4, slope_angle:8, earthquake_mean_earth:0, soil_moisture:85, seismic_activity:0, peak_acceleration:0},
+      "None": {temperature:30, rainfall:0, windspeed:5, pressure:1013, river_level:1, slope_angle:5, earthquake_mean_earth:0, soil_moisture:25, seismic_activity:0, peak_acceleration:0}
+    };
+    data = scenarios[selectedDisaster];
+  }
+
+  // Simple disaster prediction logic (mock rules)
+  let disaster = "None";
+  if (data.rainfall > 100) disaster = "Flood";
+  else if (data.earthquake_mean_earth > 4) disaster = "Earthquake";
+  else if (data.slope_angle > 30) disaster = "Landslide";
+  else if (data.windspeed > 100) disaster = "Cyclone";
+
+  // Display results
+  resultBox.innerHTML = `
+    ✅ Mode: ${mode === "1" ? "Real-Time API" : "Simulation Mode"}<br>
+    🔑 API Key: ${apiKey ? "Provided" : "Not entered"}<br><br>
+    🌡️ Temperature: ${data.temperature} °C<br>
+    🌧️ Rainfall: ${data.rainfall} mm<br>
+    💨 Windspeed: ${data.windspeed} km/h<br>
+    🌊 River Level: ${data.river_level} m<br>
+    📊 Earthquake Magnitude: ${data.earthquake_mean_earth}<br><br>
+    🔮 Predicted Disaster: <strong>${disaster}</strong>
+  `;
+});
+</script>
+
+</body>
+</html>
       <option value="Earthquake">Earthquake</option>
       <option value="Landslide">Landslide</option>
       <option value="Cyclone">Cyclone</option>
