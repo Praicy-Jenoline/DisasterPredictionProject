@@ -1,140 +1,174 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🌍 Disaster Prediction Demo</title>
-<style>
-  body { font-family: 'Segoe UI', sans-serif; background: #eef2f9; text-align: center; margin:0; }
-  h1 { background: #0078d7; color: white; padding: 16px 0; margin:0; }
-  .container { margin: 40px auto; background: white; padding: 30px; width: 90%; max-width: 600px; box-shadow:0 4px 10px rgba(0,0,0,0.2); border-radius:12px;}
-  select, input, button { margin-top:10px; padding:10px; width:80%; border:1px solid #ccc; border-radius:8px;}
-  button { background:#0078d7; color:white; font-size:16px; border:none; cursor:pointer; transition:0.2s;}
-  button:hover { background:#005fa3; }
-  #result { margin-top:25px; padding:20px; background:#f8fbff; border-radius:10px; box-shadow:inset 0 2px 5px rgba(0,0,0,0.1); font-size:17px; line-height:1.5em; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🌍 Disaster Prediction Project</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(120deg, #00bcd4, #8bc34a);
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+
+    .container {
+      max-width: 700px;
+      background: #fff;
+      padding: 2rem;
+      margin: 3rem auto;
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 1rem;
+      color: #00796b;
+    }
+
+    .mode-select,
+    .api-section,
+    .result-section {
+      margin-top: 1.5rem;
+    }
+
+    button {
+      background-color: #00796b;
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 8px;
+      margin: 0.5rem;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #004d40;
+    }
+
+    input {
+      padding: 0.6rem;
+      width: 80%;
+      margin-top: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    pre {
+      background-color: #f7f7f7;
+      text-align: left;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 2rem;
+      color: #444;
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h1>🌍 Disaster Prediction System</h1>
+    <p>Select a prediction mode:</p>
 
-<h1>🌍 Disaster Prediction System</h1>
+    <div class="mode-select">
+      <button onclick="selectMode('simulate')">🧪 Simulation Mode</button>
+      <button onclick="selectMode('realtime')">⏱ Real-Time Mode</button>
+    </div>
 
-<div class="container">
-  <h2>Select Mode</h2>
-  <select id="mode">
-    <option value="1">Real-Time API</option>
-    <option value="2">Simulation Mode</option>
-  </select>
+    <div id="simulationSection" style="display:none;">
+      <h3>Select a disaster scenario:</h3>
+      <select id="disasterType">
+        <option value="1">Flood</option>
+        <option value="2">Earthquake</option>
+        <option value="3">Landslide</option>
+        <option value="4">Cyclone</option>
+        <option value="5">No Disaster</option>
+      </select>
+      <br /><br />
+      <button onclick="runSimulation()">Run Simulation</button>
+    </div>
 
-  <div id="apiSection">
-    <label>Tomorrow.io API Key:</label>
-    <input type="text" id="apiKey" placeholder="Enter your API key" />
+    <div id="realtimeSection" class="api-section" style="display:none;">
+      <h3>Enter your Tomorrow.io API Key:</h3>
+      <input type="text" id="apiKey" placeholder="Enter your Tomorrow.io API key" />
+      <br /><br />
+      <button onclick="runRealtime()">Fetch Real-Time Data</button>
+    </div>
+
+    <div id="resultSection" class="result-section" style="display:none;">
+      <h3>🔮 Prediction Result</h3>
+      <p><strong>Mode:</strong> <span id="modeLabel"></span></p>
+      <p><strong>Predicted Disaster:</strong> <span id="disasterResult"></span></p>
+      <h4>📊 Input Data</h4>
+      <pre id="inputData"></pre>
+    </div>
   </div>
 
-  <div id="simSection" style="display:none;">
-    <h3>Select Disaster to Simulate</h3>
-    <select id="disasterType">
-      <option value="Flood">Flood</option>
-      <option value="Earthquake">Earthquake</option>
-      <option value="Landslide">Landslide</option>
-      <option value="Cyclone">Cyclone</option>
-      <option value="None">No Disaster</option>
-    </select>
+  <div class="footer">
+    <p>Developed for Disaster Prediction Project 🌦</p>
   </div>
 
-  <button id="runBtn">Run Prediction</button>
+  <script>
+    const backendURL = "http://127.0.0.1:5000";
 
-  <div id="result"></div>
-</div>
-
-<script>
-const resultBox = document.getElementById("result");
-const modeSelect = document.getElementById("mode");
-const simSection = document.getElementById("simSection");
-const apiSection = document.getElementById("apiSection");
-
-// Toggle sections
-modeSelect.addEventListener("change", () => {
-  simSection.style.display = modeSelect.value === "2" ? "block" : "none";
-  apiSection.style.display = modeSelect.value === "1" ? "block" : "none";
-});
-
-// Clear previous content and fetch prediction
-document.getElementById("runBtn").addEventListener("click", async () => {
-  // Clear previous result completely
-  resultBox.innerHTML = "";
-
-  const mode = modeSelect.value;
-  const apiKey = document.getElementById("apiKey").value.trim();
-  let data = {};
-
-  if (mode === "1") {
-    if (!apiKey) {
-      resultBox.textContent = "⚠ Please enter your API key for real-time mode.";
-      return;
+    function selectMode(mode) {
+      document.getElementById("simulationSection").style.display =
+        mode === "simulate" ? "block" : "none";
+      document.getElementById("realtimeSection").style.display =
+        mode === "realtime" ? "block" : "none";
+      document.getElementById("resultSection").style.display = "none";
     }
 
-    resultBox.textContent = "⏳ Fetching real-time data...";
+    async function runSimulation() {
+      const disaster = document.getElementById("disasterType").value;
 
-    try {
-      // Tomorrow.io weather API
-      const weatherRes = await fetch(`https://api.tomorrow.io/v4/weather/realtime?location=13.0827,80.2707&apikey=${apiKey}`);
-      const weatherJson = await weatherRes.json();
-      const values = weatherJson.data?.values || {};
-      data.temperature = values.temperature ?? 30.0;
-      data.rainfall = values.precipitationIntensity ?? 0.0;
-      data.windspeed = values.windSpeed ?? 5.0;
-      data.pressure = values.pressureSurfaceLevel ?? 1013.0;
+      const response = await fetch(`${backendURL}/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disaster }),
+      });
 
-      // USGS earthquake API
-      const quakeRes = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson");
-      const quakeJson = await quakeRes.json();
-      data.earthquake_mean_earth = quakeJson.features?.[0]?.properties?.mag ?? 0.0;
-
-      // Safe defaults
-      data.soil_moisture = 25.0;
-      data.river_level = 1.0;
-      data.slope_angle = 5.0;
-      data.seismic_activity = 0.0;
-      data.peak_acceleration = 0.0;
-
-    } catch (err) {
-      console.error(err);
-      resultBox.textContent = "❌ API error, showing safe defaults.";
-      data = {temperature:30,rainfall:0,windspeed:5,pressure:1013,earthquake_mean_earth:0,soil_moisture:25,river_level:1,slope_angle:5,seismic_activity:0,peak_acceleration:0};
+      const data = await response.json();
+      displayResult(data);
     }
-  } else {
-    // Simulation
-    const selectedDisaster = document.getElementById("disasterType").value;
-    const scenarios = {
-      "Flood": {temperature:27.5,rainfall:120,windspeed:10,pressure:995,river_level:5,slope_angle:10,earthquake_mean_earth:0,soil_moisture:80,seismic_activity:0,peak_acceleration:0},
-      "Earthquake": {temperature:30,rainfall:0,windspeed:5,pressure:1008,river_level:1,slope_angle:5,earthquake_mean_earth:5.2,soil_moisture:25,seismic_activity:6.5,peak_acceleration:0.3},
-      "Landslide": {temperature:26,rainfall:80,windspeed:6,pressure:1002,river_level:2,slope_angle:35,earthquake_mean_earth:0,soil_moisture:70,seismic_activity:0.5,peak_acceleration:0.05},
-      "Cyclone": {temperature:27,rainfall:200,windspeed:120,pressure:970,river_level:4,slope_angle:8,earthquake_mean_earth:0,soil_moisture:85,seismic_activity:0,peak_acceleration:0},
-      "None": {temperature:30,rainfall:0,windspeed:5,pressure:1013,river_level:1,slope_angle:5,earthquake_mean_earth:0,soil_moisture:25,seismic_activity:0,peak_acceleration:0}
-    };
-    data = scenarios[selectedDisaster];
-  }
 
-  // Disaster prediction
-  let disaster = "None";
-  if (data.rainfall > 100) disaster = "Flood";
-  else if (data.earthquake_mean_earth > 4) disaster = "Earthquake";
-  else if (data.slope_angle > 30) disaster = "Landslide";
-  else if (data.windspeed > 100) disaster = "Cyclone";
+    async function runRealtime() {
+      const api_key = document.getElementById("apiKey").value.trim();
+      if (!api_key) {
+        alert("Please enter your Tomorrow.io API key!");
+        return;
+      }
 
-  // Display results (replace old result completely)
-  resultBox.innerHTML = `
-    ✅ Mode: ${mode === "1" ? "Real-Time API" : "Simulation Mode"}<br>
-    🔑 API Key: ${apiKey ? "Provided" : "Not entered"}<br><br>
-    🌡️ Temperature: ${data.temperature} °C<br>
-    🌧️ Rainfall: ${data.rainfall} mm<br>
-    💨 Windspeed: ${data.windspeed} km/h<br>
-    🌊 River Level: ${data.river_level} m<br>
-    📊 Earthquake Magnitude: ${data.earthquake_mean_earth}<br><br>
-    🔮 Predicted Disaster: <strong>${disaster}</strong>
-  `;
-});
-</script>
+      const response = await fetch(`${backendURL}/realtime`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key }),
+      });
 
+      const data = await response.json();
+      displayResult(data);
+    }
+
+    function displayResult(data) {
+      document.getElementById("modeLabel").innerText =
+        data.mode === "realtime" ? "Real-Time" : "Simulation";
+      document.getElementById("disasterResult").innerText =
+        data.predicted_disaster;
+      document.getElementById("inputData").innerText = JSON.stringify(
+        data.input_data,
+        null,
+        2
+      );
+      document.getElementById("resultSection").style.display = "block";
+    }
+  </script>
 </body>
 </html>
