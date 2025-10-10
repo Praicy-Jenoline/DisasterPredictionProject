@@ -59,3 +59,4 @@ def predict_disaster(data: pd.DataFrame):
         return "Cyclone", None
     else:
         return "None", None
+
