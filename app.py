@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pandas as pd
 from core.predict_model import predict_disaster
-from apis.realtime_fetcher import get_realtime_data
-from apis.realtime_fetcher import SAFE_DEFAULTS
+from apis.realtime_fetcher import get_realtime_data, SAFE_DEFAULTS
+import os
 
 app = Flask(__name__)
 CORS(app)  # allow your HTML to access this backend
+
+# Serve index.html from root folder
+@app.route('/')
+def home():
+    return send_from_directory(os.getcwd(), 'index.html')
 
 # Helper: Simulated data
 def fetch_simulated_data_choice(choice):
@@ -32,10 +34,6 @@ def fetch_simulated_data_choice(choice):
         "5": SAFE_DEFAULTS
     }
     return pd.DataFrame([scenarios.get(choice, SAFE_DEFAULTS)])
-
-@app.route('/')
-def home():
-    return {"message": "✅ Disaster Prediction API is running!"}
 
 @app.route('/simulate', methods=['POST'])
 def simulate():
@@ -63,5 +61,3 @@ def realtime():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
-
-
