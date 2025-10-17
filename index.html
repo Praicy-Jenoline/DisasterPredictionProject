@@ -60,8 +60,8 @@
   </div>
 
   <script>
-    // Use relative URL so it works on Render and locally
-    const backendURL = window.location.origin;
+    // Use relative path so it works both locally and on Render
+    const backendURL = "";
 
     function selectMode(mode) {
       document.getElementById("simulationSection").style.display =
@@ -73,39 +73,50 @@
 
     async function runSimulation() {
       const disaster = document.getElementById("disasterType").value;
-      const response = await fetch(`${backendURL}/simulate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disaster }),
-      });
-      const data = await response.json();
-      displayResult(data);
+      try {
+        const response = await fetch(`${backendURL}/simulate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ disaster }),
+        });
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const data = await response.json();
+        displayResult(data);
+      } catch (err) {
+        alert("Failed to fetch simulation: " + err.message);
+      }
     }
 
     async function runRealtime() {
       const api_key = document.getElementById("apiKey").value.trim();
       if (!api_key) { alert("Please enter your Tomorrow.io API key!"); return; }
-      const response = await fetch(`${backendURL}/realtime`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key }),
-      });
-      const data = await response.json();
-      displayResult(data);
+      try {
+        const response = await fetch(`${backendURL}/realtime`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key }),
+        });
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const data = await response.json();
+        displayResult(data);
+      } catch (err) {
+        alert("Failed to fetch real-time data: " + err.message);
+      }
     }
 
     function displayResult(data) {
+      if (data.error) {
+        alert("Error: " + data.error);
+        return;
+      }
       document.getElementById("modeLabel").innerText =
         data.mode === "realtime" ? "Real-Time" : "Simulation";
       document.getElementById("disasterResult").innerText = data.predicted_disaster;
       document.getElementById("inputData").innerText = JSON.stringify(
-        data.input_data,
-        null,
-        2
+        data.input_data, null, 2
       );
       document.getElementById("resultSection").style.display = "block";
     }
   </script>
 </body>
 </html>
-
