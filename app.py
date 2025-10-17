@@ -9,7 +9,7 @@ from apis.realtime_fetcher import get_realtime_data, SAFE_DEFAULTS
 import os
 
 app = Flask(__name__)
-CORS(app)  # allow your HTML to access this backend
+CORS(app)  # allow frontend to access backend
 
 # Serve index.html from root folder
 @app.route('/')
