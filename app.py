@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
 from core.predict_model import predict_disaster
 from apis.realtime_fetcher import get_realtime_data, SAFE_DEFAULTS
 import os
 
-app = Flask(__name__)
-CORS(app)  # allow frontend to access backend
+# Serve root folder as static so index.html works
+app = Flask(__name__, static_folder=os.getcwd(), static_url_path="")
+CORS(app)
 
-# Serve index.html from root folder
+# Serve index.html
 @app.route('/')
 def home():
-    return send_from_directory(os.getcwd(), 'index.html')
+    return app.send_static_file("index.html")
 
 # Helper: Simulated data
 def fetch_simulated_data_choice(choice):
@@ -37,27 +37,35 @@ def fetch_simulated_data_choice(choice):
 
 @app.route('/simulate', methods=['POST'])
 def simulate():
-    data = request.get_json()
-    disaster_type = data.get("disaster", "5")
-    df = fetch_simulated_data_choice(disaster_type)
-    prediction, _ = predict_disaster(df)
-    return jsonify({
-        "mode": "simulation",
-        "predicted_disaster": prediction,
-        "input_data": df.to_dict(orient='records')[0]
-    })
+    try:
+        data = request.get_json()
+        disaster_type = data.get("disaster", "5")
+        df = fetch_simulated_data_choice(disaster_type)
+        prediction, _ = predict_disaster(df)
+        return jsonify({
+            "mode": "simulation",
+            "predicted_disaster": prediction,
+            "input_data": df.to_dict(orient='records')[0]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/realtime', methods=['POST'])
 def realtime():
-    data = request.get_json()
-    api_key = data.get("api_key")
-    df = get_realtime_data(api_key)
-    prediction, _ = predict_disaster(df)
-    return jsonify({
-        "mode": "realtime",
-        "predicted_disaster": prediction,
-        "input_data": df.to_dict(orient='records')[0]
-    })
+    try:
+        data = request.get_json()
+        api_key = data.get("api_key")
+        if not api_key:
+            return jsonify({"error": "API key is required"}), 400
+        df = get_realtime_data(api_key)
+        prediction, _ = predict_disaster(df)
+        return jsonify({
+            "mode": "realtime",
+            "predicted_disaster": prediction,
+            "input_data": df.to_dict(orient='records')[0]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
