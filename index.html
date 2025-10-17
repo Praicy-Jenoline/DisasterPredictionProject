@@ -5,72 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🌍 Disaster Prediction Project</title>
   <style>
-    body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(120deg, #00bcd4, #8bc34a);
-      margin: 0;
-      padding: 0;
-      color: #333;
-    }
-
-    .container {
-      max-width: 700px;
-      background: #fff;
-      padding: 2rem;
-      margin: 3rem auto;
-      border-radius: 15px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      text-align: center;
-    }
-
-    h1 {
-      margin-bottom: 1rem;
-      color: #00796b;
-    }
-
-    .mode-select,
-    .api-section,
-    .result-section {
-      margin-top: 1.5rem;
-    }
-
-    button {
-      background-color: #00796b;
-      color: white;
-      border: none;
-      padding: 0.8rem 1.5rem;
-      border-radius: 8px;
-      margin: 0.5rem;
-      cursor: pointer;
-      transition: background 0.3s ease;
-    }
-
-    button:hover {
-      background-color: #004d40;
-    }
-
-    input {
-      padding: 0.6rem;
-      width: 80%;
-      margin-top: 0.5rem;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-
-    pre {
-      background-color: #f7f7f7;
-      text-align: left;
-      padding: 1rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 0.9rem;
-    }
-
-    .footer {
-      text-align: center;
-      margin-top: 2rem;
-      color: #444;
-    }
+    body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(120deg, #00bcd4, #8bc34a); margin: 0; padding: 0; color: #333; }
+    .container { max-width: 700px; background: #fff; padding: 2rem; margin: 3rem auto; border-radius: 15px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); text-align: center; }
+    h1 { margin-bottom: 1rem; color: #00796b; }
+    .mode-select, .api-section, .result-section { margin-top: 1.5rem; }
+    button { background-color: #00796b; color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 8px; margin: 0.5rem; cursor: pointer; transition: background 0.3s ease; }
+    button:hover { background-color: #004d40; }
+    input { padding: 0.6rem; width: 80%; margin-top: 0.5rem; border-radius: 5px; border: 1px solid #ccc; }
+    pre { background-color: #f7f7f7; text-align: left; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.9rem; }
+    .footer { text-align: center; margin-top: 2rem; color: #444; }
   </style>
 </head>
 <body>
@@ -117,7 +60,8 @@
   </div>
 
   <script>
-    const backendURL = "http://127.0.0.1:5000";
+    // Use relative URL so it works on Render and locally
+    const backendURL = window.location.origin;
 
     function selectMode(mode) {
       document.getElementById("simulationSection").style.display =
@@ -129,30 +73,23 @@
 
     async function runSimulation() {
       const disaster = document.getElementById("disasterType").value;
-
       const response = await fetch(`${backendURL}/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disaster }),
       });
-
       const data = await response.json();
       displayResult(data);
     }
 
     async function runRealtime() {
       const api_key = document.getElementById("apiKey").value.trim();
-      if (!api_key) {
-        alert("Please enter your Tomorrow.io API key!");
-        return;
-      }
-
+      if (!api_key) { alert("Please enter your Tomorrow.io API key!"); return; }
       const response = await fetch(`${backendURL}/realtime`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key }),
       });
-
       const data = await response.json();
       displayResult(data);
     }
@@ -160,8 +97,7 @@
     function displayResult(data) {
       document.getElementById("modeLabel").innerText =
         data.mode === "realtime" ? "Real-Time" : "Simulation";
-      document.getElementById("disasterResult").innerText =
-        data.predicted_disaster;
+      document.getElementById("disasterResult").innerText = data.predicted_disaster;
       document.getElementById("inputData").innerText = JSON.stringify(
         data.input_data,
         null,
@@ -172,3 +108,4 @@
   </script>
 </body>
 </html>
+
